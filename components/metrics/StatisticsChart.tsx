@@ -1,0 +1,244 @@
+"use client";
+import React, { useEffect, useState, useMemo } from "react";
+import { ApexOptions } from "apexcharts";
+import dynamic from "next/dynamic";
+import { getMarkets, getBets, type Market, type Bet } from "@/lib/api";
+import { useActiveAccount } from "thirdweb/react";
+import { LoaderThree } from "@/components/ui/loader";
+
+// Dynamically import the ReactApexChart component
+const ReactApexChart = dynamic(() => import("react-apexcharts"), {
+  ssr: false,
+});
+
+export default function StatisticsChart() {
+  const account = useActiveAccount();
+  const userAddress = account?.address?.toLowerCase() || null;
+  
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [bets, setBets] = useState<Bet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasFetched, setHasFetched] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setHasFetched(false);
+        const [marketsResponse, betsResponse] = await Promise.all([
+          getMarkets(),
+          getBets(),
+        ]);
+
+        if (marketsResponse.success && marketsResponse.data) {
+          // Filter markets by user's creator address
+          if (userAddress) {
+            const userMarkets = marketsResponse.data.filter(
+              (market) => market.creator?.toLowerCase() === userAddress
+            );
+            setMarkets(userMarkets);
+          } else {
+            setMarkets([]);
+          }
+        } else {
+          setMarkets([]);
+        }
+
+        if (betsResponse.success && betsResponse.data) {
+          // Filter bets by user's wallet address
+          if (userAddress) {
+            const userBets = betsResponse.data.filter(
+              (bet) => bet.bettor?.toLowerCase() === userAddress
+            );
+            setBets(userBets);
+          } else {
+            setBets([]);
+          }
+        } else {
+          setBets([]);
+        }
+        setHasFetched(true);
+      } catch (error) {
+        console.error("Error fetching statistics data:", error);
+        setMarkets([]);
+        setBets([]);
+        setHasFetched(true);
+      }
+    };
+
+    fetchData();
+  }, [userAddress]);
+
+  // Wait for computed data to be ready before hiding loader
+  useEffect(() => {
+    if (hasFetched) {
+      // Use requestAnimationFrame to ensure React has processed state updates
+      // and useMemo has recalculated monthlyStats
+      const timer = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsLoading(false);
+        });
+      });
+      return () => cancelAnimationFrame(timer);
+    }
+  }, [hasFetched, markets, bets]);
+
+  // Calculate monthly statistics
+  const monthlyStats = useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    // Calculate markets created per month
+    // Since we don't have a creation timestamp, assign all markets to the current month
+    const marketsData = new Array(12).fill(0);
+    if (markets.length > 0) {
+      const currentMonth = new Date().getMonth(); // 0-11 (0 = January, 10 = November)
+      marketsData[currentMonth] = markets.length;
+    }
+
+    // Calculate bets placed per month
+    // Since we don't have a timestamp, assign all bets to the current month
+    const betsData = new Array(12).fill(0);
+    if (bets.length > 0) {
+      const currentMonth = new Date().getMonth(); // 0-11 (0 = January, 10 = November)
+      betsData[currentMonth] = bets.length;
+    }
+
+    return { marketsData, betsData };
+  }, [markets, bets]);
+  const options: ApexOptions = {
+    legend: {
+      show: false, // Hide legend
+      position: "top",
+      horizontalAlign: "left",
+    },
+    colors: ["#465FFF", "#9CB9FF"], // Define line colors
+    chart: {
+      fontFamily: "Outfit, sans-serif",
+      height: 310,
+      type: "line", // Set the chart type to 'line'
+      toolbar: {
+        show: false, // Hide chart toolbar
+      },
+    },
+    stroke: {
+      curve: "straight", // Define the line style (straight, smooth, or step)
+      width: [2, 2], // Line width for each dataset
+    },
+
+    fill: {
+      type: "solid",
+      opacity: 0.18,
+    },
+    markers: {
+      size: 0, // Size of the marker points
+      strokeColors: "#fff", // Marker border color
+      strokeWidth: 2,
+      hover: {
+        size: 6, // Marker size on hover
+      },
+    },
+    grid: {
+      xaxis: {
+        lines: {
+          show: false, // Hide grid lines on x-axis
+        },
+      },
+      yaxis: {
+        lines: {
+          show: true, // Show grid lines on y-axis
+        },
+      },
+    },
+    dataLabels: {
+      enabled: false, // Disable data labels
+    },
+    tooltip: {
+      enabled: true, // Enable tooltip
+      x: {
+        format: "dd MMM yyyy", // Format for x-axis tooltip
+      },
+    },
+    xaxis: {
+      type: "category", // Category-based x-axis
+      categories: [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ],
+      axisBorder: {
+        show: false, // Hide x-axis border
+      },
+      axisTicks: {
+        show: false, // Hide x-axis ticks
+      },
+      tooltip: {
+        enabled: false, // Disable tooltip for x-axis points
+      },
+    },
+    yaxis: {
+      labels: {
+        style: {
+          fontSize: "12px", // Adjust font size for y-axis labels
+          colors: ["#6B7280"], // Color of the labels
+        },
+      },
+      title: {
+        text: "", // Remove y-axis title
+        style: {
+          fontSize: "0px",
+        },
+      },
+    },
+  };
+
+  const series = [
+    {
+      name: "Markets Created",
+      data: monthlyStats.marketsData,
+    },
+    {
+      name: "Bets Placed",
+      data: monthlyStats.betsData,
+    },
+  ];
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
+      <div className="flex flex-col gap-5 mb-6 sm:flex-row sm:justify-between">
+        <div className="w-full">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            Statistics
+          </h3>
+          <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
+            Target you’ve set for each month
+          </p>
+        </div>
+      </div>
+
+      <div className="max-w-full overflow-x-auto custom-scrollbar">
+        <div className="min-w-[1000px] xl:min-w-full">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-[310px]">
+              <LoaderThree />
+            </div>
+          ) : (
+            <ReactApexChart
+              options={options}
+              series={series}
+              type="area"
+              height={310}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
