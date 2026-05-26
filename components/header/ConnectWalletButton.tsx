@@ -7,9 +7,12 @@ import { createThirdwebClient } from "thirdweb";
 import { useTheme } from "@/context/ThemeContext";
 
 // Create Thirdweb client
-const client = createThirdwebClient({
-  clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || "",
-});
+const thirdwebClientId = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID;
+const client = thirdwebClientId
+  ? createThirdwebClient({
+      clientId: thirdwebClientId,
+    })
+  : null;
 
 // Genlayer Network
 // RPC URL from environment variable (for frontend wallet connections)
@@ -26,6 +29,18 @@ const genlayerChain = defineChain({
 
 export default function ConnectWalletButton() {
   const { theme } = useTheme();
+
+  if (!client) {
+    return (
+      <button
+        className="px-4 py-2 rounded-lg font-medium text-sm bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+        type="button"
+        disabled
+      >
+        Wallet unavailable
+      </button>
+    );
+  }
 
   return (
     <div className="thirdweb-connect-button-wrapper">
